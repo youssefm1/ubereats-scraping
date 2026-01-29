@@ -68,7 +68,6 @@ def generate_combos():
                 continue
             try:
                 price_value = float(row['price'].replace('$', '').strip())
-                # Only include items $6 or more
                 if price_value >= 6:
                     valid_combo_items.append(row)
             except ValueError:
@@ -76,7 +75,7 @@ def generate_combos():
     return valid_combo_items
 
 
-def find_combinations(items, min_price=6, max_price=30, limit=50000):
+def find_combinations(items, min_price=6, max_price=35, limit=50000):
     """Efficiently find combinations using recursive backtracking with pruning"""
     valid_combinations = []
     max_per_item = 2
@@ -84,15 +83,16 @@ def find_combinations(items, min_price=6, max_price=30, limit=50000):
     affordable_items = [item for item in items if int(item['price'].replace("$", "").split(".")[0]) <= max_price]
     print(f"\nGenerating combinations from {len(affordable_items)} affordable items (limiting to {limit} results)...")
     
-    # Parse prices once
     item_prices = []
+    is_dessert = []
     for item in affordable_items:
         price = int(item['price'].replace("$", "").split(".")[0])
         item_prices.append(price)
+        is_dessert.append(item['category'] == 'Desserts')
     
     combo_count = [0]  # Use list to track count in nested function
     
-    def backtrack(index, current_items, current_price, item_count):
+    def backtrack(index, current_items, current_price, item_count, dessert_count):
         """Recursively build combinations with pruning"""
         # Early exit if we've found enough combinations
         if len(valid_combinations) >= limit:
@@ -103,7 +103,6 @@ def find_combinations(items, min_price=6, max_price=30, limit=50000):
         if combo_count[0] % 100000 == 0:
             print(f"Evaluated {combo_count[0]:,} combinations, found {len(valid_combinations)} valid ones...")
         
-        # Base case: reached end of items
         if index == len(affordable_items):
             if min_price <= current_price <= max_price and item_count > 0:
                 avg_price_per_item = current_price / item_count
@@ -116,43 +115,50 @@ def find_combinations(items, min_price=6, max_price=30, limit=50000):
                 })
             return
         
-        # Pruning: if current price already exceeds max, skip
+        # pruning: if current price already exceeds max, skip
         if current_price > max_price:
             return
         
-        # Pruning: if even one more item exceeds max items, skip adding more items
+        # pruning: if even one more item exceeds max items, skip adding more items
         if item_count >= 10:
-            # Still try without adding this item
-            backtrack(index + 1, current_items, current_price, item_count)
+            # continue without adding this item
+            backtrack(index + 1, current_items, current_price, item_count, dessert_count)
             return
         
-        # Try adding 0, 1, or 2 of current item
-        for qty in range(max_per_item + 1):
+        max_qty = 1 if is_dessert[index] else max_per_item
+        
+        # try adding 0, 1, or 2 of current item (or just 1 if dessert)
+        for qty in range(max_qty + 1):
+            # if dessert and we already have one, skip this item
+            if is_dessert[index] and dessert_count > 0:
+                continue
+            
             item_total_price = item_prices[index] * qty
             new_price = current_price + item_total_price
             
-            # Pruning: skip if exceeds max price
+            # pruning: skip if exceeds max price
             if new_price > max_price:
                 break
+            
+            new_dessert_count = dessert_count + qty if is_dessert[index] else dessert_count
             
             if qty > 0:
                 for _ in range(qty):
                     current_items.append(affordable_items[index])
             
-            backtrack(index + 1, current_items, new_price, item_count + qty)
+            backtrack(index + 1, current_items, new_price, item_count + qty, new_dessert_count)
             
             if qty > 0:
                 for _ in range(qty):
                     current_items.pop()
     
-    backtrack(0, [], 0, 0)
+    backtrack(0, [], 0, 0, 0)
     print(f"Total combinations evaluated: {combo_count[0]:,}")
     return valid_combinations
 
 def find_best_value_combinations(combinations, top_n=10):
     """Find the best value combinations based on various metrics"""
     
-    # Sort by different criteria
     most_items = sorted(combinations, 
                        key=lambda x: (x['item_count'], -x['total_price']))[:top_n]
     
@@ -191,7 +197,6 @@ def print_combination_with_quantities(combo, title=""):
           f"Avg: ${combo['avg_price_per_item']:.2f}")
     print("-" * 60)
     
-    # Group items by name to show quantities
     item_counts = {}
     for item in combo['items']:
         key = f"{item['category']}: {item['name']}"
@@ -205,10 +210,8 @@ def print_combination_with_quantities(combo, title=""):
 
 
 def main():
-    # uber_eats_scrape()
     valid_items = generate_combos()
     all_combinations  = find_combinations(valid_items)
-    #best_combos = find_best_value_combinations(combinations)
 
 
     if all_combinations:
@@ -230,19 +233,15 @@ def analyze_combinations_by_category(combinations):
     category_scores = {}
     
     for combo in combinations:
-        # Score combo based on value (more items for less money = higher score)
         score = combo['item_count'] / combo['total_price']
         
-        # Track categories in this combo
         categories_in_combo = set()
         for item in combo['items']:
             categories_in_combo.add(item['category'])
         
-        # Add score to each category in the combo
         for category in categories_in_combo:
             category_scores[category] = category_scores.get(category, 0) + score
     
-    # Sort categories by score
     sorted_categories = sorted(category_scores.items(), key=lambda x: x[1], reverse=True)
     
     print("\n" + "="*60)
@@ -253,9 +252,6 @@ def analyze_combinations_by_category(combinations):
     
     return sorted_categories
 
-# Run analysis
-# analyze_combinations_by_category(all_combinations)
-
 def export_combinations_to_csv(combinations, filename="best_combinations.csv"):
     """Export top combinations to CSV for further analysis"""
     with open(filename, 'w', newline='') as f:
@@ -264,7 +260,6 @@ def export_combinations_to_csv(combinations, filename="best_combinations.csv"):
                         'Avg Price/Item', 'Items List'])
         
         for i, combo in enumerate(combinations[:100], 1):
-            # Create a compact items list
             items_summary = []
             item_counts = {}
             for item in combo['items']:
