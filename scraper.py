@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import string
 from itertools import combinations_with_replacement, product
 
-SCRAPE_TOKEN = "8080ad010dd74476a8005408eea8acf271c96aaff70"
+SCRAPE_TOKEN = "----"
 UBEREATS_RESTAURANT_URL = "https://www.ubereats.com/store/asads-hot-chicken-south-philly/gcLzsdD6X9q9Etm6nXYDiA?ps=1?diningMode=DELIVERY"
 
 
